@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Transaction Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            let transaction_id = null;
+
+            // Fetch transactions and render table
+            function loadTransactions() {
+                $.ajax({
+                    type: "GET",
+                    url: "/transactions",
+                    dataType: "json",
+                    success: function (result) {
+                        const transactions = result._embedded.transactions;
+                        const tbody = $("#transactionTable tbody");
+                        tbody.empty();
+                        transactions.forEach(t => {
+                            const modeName = t.transactionMode?.name || 'NA';
+                            const row = `<tr data-id="${t.id}" data-modeid="${t.transactionMode?.id || ''}">
+                                <td>${t.id || ''}</td>
+                                <td class="desc">${t.description}</td>
+                                <td class="amt">${t.amount}</td>
+                                <td class="mode">${modeName}</td>
+                                <td>
+                                    <button class="editBtn btn btn-sm btn-warning">Edit</button>
+                                </td>
+                            </tr>`;
+                            tbody.append(row);
+                        });
+                    },
+                    error: function (err) {
+                        console.error(err);
+                    }
+                });
+            }
+
+            // Fetch transaction modes for dropdown
+            function loadTransactionModes() {
+                $.ajax({
+                    type: "GET",
+                    url: "/transactionModes",
+                    dataType: "json",
+                    success: function (result) {
+                        const modes = result._embedded.transactionModes;
+                        const select = $("#transactionMode");
+                        select.empty();
+
+                        // Default placeholder
+                        select.append('<option value="">-- Select Mode --</option>');
+
+                        modes.forEach(m => {
+                            // Extract ID from HAL link
+                            const modeId = m._links.self.href.split('/').pop();
+                            select.append(`<option value="${modeId}">${m.name}</option>`);
+                        });
+                    },
+                    error: function (err) {
+                        console.error(err);
+                    }
+                });
+            }
+
+            loadTransactions();
+            loadTransactionModes();
+
+            // Save / Update transaction
+            $("#saveBtn").click(function (event) {
+                event.preventDefault();
+                const description = $("#description").val();
+                const amount = $("#amount").val();
+                const modeId = $("#transactionMode").val();
+
+                if (!modeId) {
+                    alert("Please select a transaction mode.");
+                    return;
+                }
+
+                const formData = {
+                    description: description,
+                    amount: amount,
+                    transactionMode: {id: modeId}
+                };
+
+                $.ajax({
+                    type: transaction_id ? "PUT" : "POST",
+                    url: transaction_id ? "/transactions/" + transaction_id : "/transactions",
+                    contentType: "application/json",
+                    data: JSON.stringify(formData),
+                    success: function () {
+                        $("#outputMessage").text(transaction_id ? "Transaction updated successfully" : "Transaction added successfully");
+                        resetForm();
+                        loadTransactions();
+                    },
+                    error: function (err) {
+                        $("#outputMessage").text(err.responseText);
+                    }
+                });
+            });
+
+            // Delete transaction
+            $("#deleteBtn").click(function () {
+                if (!transaction_id) return;
+                $.ajax({
+                    type: "DELETE",
+                    url: "/transactions/" + transaction_id,
+                    success: function () {
+                        alert("Transaction deleted successfully");
+                        resetForm();
+                        loadTransactions();
+                    },
+                    error: function (err) {
+                        $("#outputMessage").text(err.responseText);
+                    }
+                });
+            });
+
+            // Edit button click in table
+            $(document).on("click", ".editBtn", function () {
+                const row = $(this).closest("tr");
+                transaction_id = row.data("id");
+                $("#transaction_id").val(transaction_id);
+                $("#description").val(row.find(".desc").text());
+                $("#amount").val(row.find(".amt").text());
+                $("#transactionMode").val(row.data("modeid"));
+                $("#deleteBtn").show();
+            });
+
+            function resetForm() {
+                transaction_id = null;
+                $("#transaction_id").val("");
+                $("#description").val("");
+                $("#amount").val("");
+                $("#transactionMode").val("");
+                $("#deleteBtn").hide();
+                $("#outputMessage").text("");
+            }
+        });
+    </script>
+</head>
+<body>
+<div class="container mt-5">
+    <h2 class="text-center">Transaction Management</h2>
+
+    <div class="card mt-3">
+        <div class="card-body">
+            <span id="outputMessage" class="text-success"></span>
+            <form id="transactionForm">
+                <input type="hidden" id="transaction_id">
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <input class="form-control" id="description" type="text" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Amount</label>
+                    <input class="form-control" id="amount" type="number" step="0.01" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Transaction Mode</label>
+                    <select class="form-control" id="transactionMode"></select>
+                </div>
+                <button type="button" id="saveBtn" class="btn btn-primary">Save</button>
+                <button type="button" id="deleteBtn" class="btn btn-danger" style="display:none;">Delete</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-body">
+            <h4>All Transactions</h4>
+            <table class="table table-bordered" id="transactionTable">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Mode</th>
+                    <th>Action</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>
